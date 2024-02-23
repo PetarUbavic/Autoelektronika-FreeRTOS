@@ -33,5 +33,7 @@ int init_serial_downlink(uint8_t c);
 int close_serial_downlink(uint8_t c);
 int send_serial_character(uint8_t c, uint8_t d);
 int get_serial_character(uint8_t c, uint8_t* d);
+int get_RXC_status(uint8_t c);
+int get_TBE_status(uint8_t c);
 
 #endif

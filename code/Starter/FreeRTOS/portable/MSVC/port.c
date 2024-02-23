@@ -29,10 +29,11 @@
 #include <stdio.h>
 
 /* Scheduler includes. */
-#include "FreeRTOS.h"
-#include "task.h"
 
-#include "extint.h"
+#include "../../include/FreeRTOS.h"
+#include "../../include/task.h"
+
+#include "../../include/extint.h"
 
 #ifdef __GNUC__
 	#include "mmsystem.h"

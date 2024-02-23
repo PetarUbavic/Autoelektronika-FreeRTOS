@@ -14,13 +14,13 @@ void vApplicationMallocFailedHook(void);
 void vApplicationStackOverflowHook(TaskHandle_t pxTask, char* pcTaskName);
 
 /*
- * main_demo() is used as the main task
+ * main_program() is used as the main task
  */
-void main_demo( void );
+void main_program( void );
 
 int main( void )
 {
-	main_demo();
+	main_program();
 
 	return 0;
 }
@@ -43,8 +43,9 @@ void vApplicationMallocFailedHook( void )
 }
 /*-----------------------------------------------------------*/
 
-/*void vApplicationIdleHook( void )
-{*/
+/*void vApplicationIdleHook(void)
+  {*/
+
 	/* vApplicationIdleHook() will only be called if configUSE_IDLE_HOOK is set
 	to 1 in FreeRTOSConfig.h.  It will be called on each iteration of the idle
 	task.  It is essential that code added to this hook function never attempts
@@ -101,8 +102,8 @@ volatile uint32_t ulSetToNonZeroInDebuggerToContinue = 0;
 		value. */
 		while( ulSetToNonZeroInDebuggerToContinue == 0 )
 		{
-			__asm{ NOP };
-			__asm{ NOP };
+			//__asm{ NOP };
+			//__asm{ NOP };
 		}
 	}
 	taskEXIT_CRITICAL();

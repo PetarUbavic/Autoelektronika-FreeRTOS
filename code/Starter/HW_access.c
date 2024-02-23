@@ -181,3 +181,47 @@ int get_serial_character(uint8_t c, uint8_t* d)
 	sqn++;
 	return -1;
 }
+
+int get_RXC_status(uint8_t c)
+{
+	cmd_template cmd;
+	rply_template rply;
+	static uint16_t sqn = 10;
+
+	if (c > 9)
+		return -1;
+	cmd.command = CMD_GET_RXC;
+	cmd.body.type_2.sequence_num = sqn;
+	if (HWSIM_query(serialDownSock + c, sizeof(cmd), &cmd, sizeof(rply), &rply) == comm_OK)
+	{
+		if ((rply.command == RPLY_GET_RXC) && (rply.body.type_1.sequence_num == sqn))
+		{
+			sqn++;
+			return rply.body.type_1.data == 0 ? 0 : 1;
+		}
+	}
+	sqn++;
+	return -1;
+}
+
+int get_TBE_status(uint8_t c)
+{
+	cmd_template cmd;
+	rply_template rply;
+	static uint16_t sqn = 10;
+
+	if (c > 9)
+		return -1;
+	cmd.command = CMD_GET_TBE;
+	cmd.body.type_2.sequence_num = sqn;
+	if (HWSIM_query(serialDownSock + c, sizeof(cmd), &cmd, sizeof(rply), &rply) == comm_OK)
+	{
+		if ((rply.command == RPLY_GET_TBE) && (rply.body.type_1.sequence_num == sqn))
+		{
+			sqn++;
+			return rply.body.type_1.data == 0 ? 0 : 1;
+		}
+	}
+	sqn++;
+	return -1;
+}

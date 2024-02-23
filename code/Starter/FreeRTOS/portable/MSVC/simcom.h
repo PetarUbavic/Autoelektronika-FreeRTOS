@@ -19,7 +19,6 @@
 #define SIM_TIMER (2)
 #define SIM_TBE (3)
 #define SIM_RXC (4)
-#define SIM_PORT_CHG (5)
 
 /* INTERRUPT GENERATOR COMMANDS */
 #define CMD_GEN_INT (1)
@@ -39,8 +38,12 @@
 
 /* SERIAL TRANSMITTER COMMANDS */
 #define CMD_GET_CHARACTER (1)
+#define CMD_GET_TBE (2)
+#define CMD_GET_RXC (3)
 /* SERIAL TRANSMITTER REPLIES */
 #define RPLY_GET_CHARACTER (1)
+#define RPLY_GET_TBE (2)
+#define RPLY_GET_RXC (3)
 
 /* communication structures */
 struct cmd_type_1 {

@@ -1,9 +1,10 @@
-// #include <WinSock2.h>
+#include <WinSock2.h>
 
-#include "FreeRTOS.h"
+#include "../../include/FreeRTOS.h"
 
-#include "extint.h"
+#include "../../include/extint.h"
 #include "simcom.h"
+
 
 DWORD WINAPI prvExternalInterruptCatcher(LPVOID lpParameter)
 {
