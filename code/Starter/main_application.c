@@ -285,36 +285,36 @@ static void ReceiveSens2ValueTask(void* pvParameters) {
 
 			if ((tmpString[0] >= '0' && tmpString[0] <= '9') &&
 				(tmpString[1] >= '0' && tmpString[1] <= '9') &&
-				(tmpString[2] >= '0' && tmpString[2] <= '9')) {
+				(tmpString[2] >= '0' && tmpString[2] <= '9')) {						// Provera da li su svi uneti karakteri zaista brojevi
 
-					value = (tmpString[0] - 48) * 100;
-					if ((tmpString[0] - 48) >= 2) {
+					if ((uint8_t)(tmpString[0] - 48) > (uint8_t)1) {				// Provera da li je prvi karakter veci od 1 ako jeste, ne valja unos, ako nije, znaci sve ok, ide u else i racuna broj
 						// Overflow occurred
 						// Handle overflow here, such as setting a flag or taking appropriate action
-						printf("!!!! Overflow on channel 1 - Sensor2_OUT !!!!\n");
-					}
-
-					value += (tmpString[1] - 48) * 10;
-					if (value > 245) {
-						// Overflow occurred
-						// Handle overflow here, such as setting a flag or taking appropriate action
-						printf("!!!! Overflow on channel 1 - Sensor2_OUT !!!!\n");
-					}
-					value += tmpString[2] - 48;
-
-					if (value > 150) {
-						// Invalid input
+						printf("!!!! Posibility of Overflow on Channel 1 - Sensor2 !!!!\n");
 						printf("Invalid input - Sensor2\n");
+						value = 0;
+					}
+
+					else if (( (uint8_t)((tmpString[0] - 48) * 10) + (uint8_t)(tmpString[1] - 48)) > (uint8_t)15) { // U sustini proverava da li ce broj biti veci od 150, ali proverava da li su prvi karakter *10 + drugi karakter veci od 15 kako bi izbegao eventualni overflow
+						printf("Invalid input - Sensor2\n");
+						value = 0;
+					}
+
+					else {
+						value = (tmpString[0] - 48) * 100;
+						value += (uint8_t)(tmpString[1] - 48) * (uint8_t)10;
+						value += (uint8_t)tmpString[2] - (uint8_t)48;	
 					}
 
 					tmpString[position] = '\0';
 					position++;
 					tmpString[position] = 'i';
 					position = 0;
+
 					if (xQueueSend(Queue2, &value, 0) != pdTRUE) {
 						printf("Error QUEUE2_SEND\n");
 					}
-					printf("Hello1: vrednost %u", value);
+					printf("Hello1: vrednost %u\n", value);
 					value = 0;
 			}			
 		}
