@@ -28,9 +28,12 @@
 #define RECEIVE_VALUE_PRI1		( tskIDLE_PRIORITY + (UBaseType_t)6 )
 #define RECEIVE_VALUE_PRI2		( tskIDLE_PRIORITY + (UBaseType_t)7 )
 
-
-// 7-SEG NUMBER DATABASE - ALL HEX DIGITS [ 0 1 2 3 4 5 6 7 8 9 A B C D E F ]
-static const char hexnum[] = { 0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F, 0x77, 0x7C, 0x39, 0x5E, 0x79, 0x71 };
+/*
+typedef struct LEDBar {
+	uint8_t barsNum;
+	uint8_t diodesNum;
+}LEDBar;
+*/
 
 // TASKS: FORWARD DECLARATIONS 
 static void LEDBar_Task(void* pvParameters);
@@ -40,6 +43,7 @@ static void ProcessDataTask(void* pvParameters);
 static void AveragingDataTask(void* pvParameters);
 static void LedBarTask(void* pvParameters);
 static void DisplayTask(void* pvParameters);
+static void SendMessageTask(void* pvParameters);
 
 
 // GLOBAL OS-HANDLES 
@@ -49,6 +53,7 @@ static SemaphoreHandle_t RXC_BinarySemaphore1;
 static SemaphoreHandle_t WrongSensing_SEM;
 static SemaphoreHandle_t Sens1_SEM, Sens2_SEM;
 static SemaphoreHandle_t Display_SEM;
+static SemaphoreHandle_t Message_SEM;
 static QueueHandle_t Queue1, Queue2, QTemp1, QTemp2, QMotorTemp;
 static TimerHandle_t per_TimerHandle;
 
@@ -61,7 +66,7 @@ static uint32_t UARTInterrupt(void) {
 			printf("ERROR: UART_SEM0 GIVE\n");
 		}
 		else {
-			printf("UART0 GIVEN\n");
+			//printf("UART0 GIVEN\n");
 		}
 	}
 	if (get_RXC_status(COM_CH_1) != NULL) {
@@ -69,7 +74,7 @@ static uint32_t UARTInterrupt(void) {
 			printf("ERROR: UART_SEM1 GIVE\n");
 		}
 		else {
-			printf("\n---------------------------UART1 GIVEN---------------------------\n");
+			//printf("\n---------------------------UART1 GIVEN---------------------------\n");
 		}
 	}
 	// za kanal 2 nemamo ovde nista jer sluzi samo za slanje
@@ -83,6 +88,19 @@ static uint32_t OnLED_ChangeInterrupt(void) {	// OPC - ON INPUT CHANGE - INTERRU
 	portYIELD_FROM_ISR(xHigherPTW);
 }
 
+static uint32_t MessageInterrupt(void) {
+
+	BaseType_t xHigherPTW = pdFALSE;
+
+	if (get_TBE_status(2) != NULL) {
+		if (xSemaphoreGiveFromISR(Message_SEM, &xHigherPTW) != pdPASS) {
+			printf("ERROR: Message_SEM Give\n");
+		}
+	}
+
+	portYIELD_FROM_ISR((uint32_t)xHigherPTW);
+}
+
 
 // PERIODIC TIMER CALLBACK 
 static void TimerCallback200(TimerHandle_t tmH) {
@@ -90,7 +108,7 @@ static void TimerCallback200(TimerHandle_t tmH) {
 		printf("Error SEND_TRIGGER\n");
 	}
 
-	vTaskDelay(pdMS_TO_TICKS(800));
+	vTaskDelay(pdMS_TO_TICKS(400));
 
 	if (send_serial_character((uint8_t)COM_CH_1, (uint8_t)'T') != 0) { //ovo daje ritam aj da kazem tako
 		printf("Error SEND_TRIGGER\n");
@@ -99,12 +117,12 @@ static void TimerCallback200(TimerHandle_t tmH) {
 	//vTaskDelay(pdMS_TO_TICKS(50));
 }
 
-/*static void TimerCallback100(TimerHandle_t tmH) {
+static void TimerCallback100(TimerHandle_t tmH) {
 	if (xSemaphoreGive(Display_SEM) != pdTRUE) {
 		printf("Error: Semaphore Display_SEM Give\n");
 	}
-	vTaskDelay(pdMS_TO_TICKS(100));
-}*/
+	//vTaskDelay(pdMS_TO_TICKS(100));
+}
 
 // MAIN - SYSTEM STARTUP POINT 
 int main_program(void) {
@@ -128,8 +146,18 @@ int main_program(void) {
 	if (init_serial_downlink(COM_CH_2) != 0) {
 		printf("ERROR: RX COM2 INIT\n");
 	}
+
+	if (init_LED_comm() != 0) {
+		printf("ERROR: LED BAR INIT\n");
+	}
+
+	if (init_7seg_comm() != 0) {
+		printf("ERROR: 7SEG DISPLAY INIT\n");
+	}
+
 	// SERIAL RECEPTION INTERRUPT HANDLER //
 	vPortSetInterruptHandler(portINTERRUPT_SRL_RXC, UARTInterrupt);
+	vPortSetInterruptHandler(portINTERRUPT_SRL_TBE, MessageInterrupt);
 
 	// Setup UART peripherals
 	UART0_SEM = xSemaphoreCreateBinary();
@@ -164,16 +192,21 @@ int main_program(void) {
 		printf("Error: Display_SEM Create\n");
 	}
 
+	Message_SEM = xSemaphoreCreateBinary();
+	if (Message_SEM == NULL) {
+		printf("ERROR: Message_SEM Create\n");
+	}
+
 	// Create queue for UART data
 	//uart_channel_0_queue = xQueueCreate(UART_CHANNEL_0_QUEUE_LENGTH, sizeof(uint8_t));
 
 
-	Queue1 = xQueueCreate((uint8_t)10, (uint8_t)MAX_CHARACTERS * (uint8_t)sizeof(uint8_t));
+	Queue1 = xQueueCreate((uint8_t)15, (uint8_t)MAX_CHARACTERS * (uint8_t)sizeof(uint8_t));		//15 mesta zato sto mora da stane 5, pa kao jos 3 puta toliko da ima lufta ajd
 	if (Queue1 == NULL) {
 		printf("Error QUEUE1_CREATE\n");
 	}
 
-	Queue2 = xQueueCreate((uint8_t)10, (uint8_t)MAX_CHARACTERS * (uint8_t)sizeof(char));
+	Queue2 = xQueueCreate((uint8_t)15, (uint8_t)MAX_CHARACTERS * (uint8_t)sizeof(char));		//15 mesta zato sto mora da stane 5, pa kao jos 3 puta toliko da ima lufta ajd
 	if (Queue2 == NULL) {
 		printf("Error QUEUE2_CREATE\n");
 	}
@@ -195,8 +228,8 @@ int main_program(void) {
 
 	// TIMERS //
 	TimerHandle_t Timer200ms = xTimerCreate(
-		NULL,
-		pdMS_TO_TICKS(1000), // bilo 1000
+		"Timer for UART trigger",
+		pdMS_TO_TICKS(550), // bilo 1000
 		pdTRUE,
 		NULL,
 		TimerCallback200);
@@ -208,7 +241,7 @@ int main_program(void) {
 	}
 
 	/*TimerHandle_t Timer100ms = xTimerCreate(
-		NULL,
+		"Timer for Display",
 		pdMS_TO_TICKS(100),
 		pdTRUE,
 		NULL,
@@ -218,8 +251,8 @@ int main_program(void) {
 	}
 	if (xTimerStart(Timer100ms, 0) != pdPASS) {
 		printf("Error Timer100ms Start\n");
-	}*/
-
+	}
+	*/
 
 
 	//TASKS
@@ -246,7 +279,7 @@ int main_program(void) {
 		printf("Error RECEIVE_COMMAND_TASK_CREATE\n");
 	}
 
-	/*status = xTaskCreate(
+	status = xTaskCreate(
 		AveragingDataTask,
 		"Sredjivanje podataka sa senzora",
 		configMINIMAL_STACK_SIZE,
@@ -256,8 +289,8 @@ int main_program(void) {
 	if (status != pdPASS) {
 		printf("Error AVERAGING_DATA_TASK_CREATE\n");
 	}
-	*/
-	/*status = xTaskCreate(
+	
+	status = xTaskCreate(
 		ProcessDataTask,
 		"Obrada sredjenih podataka",
 		configMINIMAL_STACK_SIZE,
@@ -266,9 +299,9 @@ int main_program(void) {
 		NULL);
 	if (status != pdPASS) {
 		printf("Error RECEIVE_COMMAND_TASK_CREATE\n");
-	}*/
+	}
 
-	/*status = xTaskCreate(
+	status = xTaskCreate(
 		DisplayTask,
 		"Prikaz temperature na displej",
 		configMINIMAL_STACK_SIZE,
@@ -277,8 +310,8 @@ int main_program(void) {
 		NULL);
 	if (status != pdPASS) {
 		printf("Error RECEIVE_COMMAND_TASK_CREATE\n");
-	}*/
-
+	}
+	
 	/*status = xTaskCreate(
 		LedBarTask,
 		"LED bar alarmi",
@@ -288,7 +321,20 @@ int main_program(void) {
 		NULL);
 	if (status != pdPASS) {
 		printf("Error RECEIVE_COMMAND_TASK_CREATE\n");
-	}*/
+	}
+	*/
+
+	status = xTaskCreate(
+		SendMessageTask,
+		"Task za slanje poruka na serijsku",
+		configMINIMAL_STACK_SIZE,
+		NULL,
+		(UBaseType_t)PROCESS_DATA_PRI,
+		NULL);
+	if (status != pdPASS) {
+		printf("ERROR: SendMessageTask Create\n");
+	}
+
 	// Create task for UART communication
 	//xTaskCreate(uart_channel_0_task, "UART_Channel_0_Task", UART_TASK_STACK_SIZE, NULL, UART_TASK_PRIORITY, NULL);
 
@@ -347,12 +393,15 @@ static void ReceiveSens1ValueTask(void* pvParameters) {
 				}
 
 				else {
-					/*if (xSemaphoreGive(Sens1_SEM) != pdTRUE) {
-						printf("Error: Sens1_SEM Give\n");
-					}*/
+					if (xSemaphoreGive(Sens1_SEM) != pdTRUE) {
+						//printf("Error: Sens1_SEM Give\n");
+					}
 				}
+
+				position = 0;
+
 				//printf("-----Broj mesta u Q1: %u", uxQueueSpacesAvailable(Queue1));
-				//printf("---------------------Vrednost 1: %u\n", value);
+				//printf("----------Poslata Vrednost 1: %u\n", value);
 
 				if (uxQueueSpacesAvailable(Queue1) == 1) {
 					xQueueReset(Queue1);
@@ -414,11 +463,13 @@ static void ReceiveSens2ValueTask(void* pvParameters) {
 					printf("Error QUEUE2_SEND\n");
 				}
 
-				/*else {
+				else {
 					if (xSemaphoreGive(Sens2_SEM) != pdTRUE) {
-						printf("Error: Sens2_SEM Give\n");
+						//printf("Error: Sens2_SEM Give\n");
 					}
-				}*/
+				}
+
+				position = 0;
 				//printf("-----Broj mesta u Q2: %u", uxQueueSpacesAvailable(Queue2));
 				//printf("---------------------Vrednost 2: %u\n", value);
 
@@ -442,8 +493,8 @@ static void ReceiveSens2ValueTask(void* pvParameters) {
 
 static void AveragingDataTask(void* pvParameters) {
 
-	static uint16_t tmp1Val = 0;
-	static uint16_t tmp2Val = 0;
+	uint16_t tmp1Val = 0;
+	uint16_t tmp2Val = 0;
 	uint16_t tmp1 = 0;
 	uint16_t tmp2 = 0;
 	static double temp1 = 0; //mozda ne treba static
@@ -454,21 +505,21 @@ static void AveragingDataTask(void* pvParameters) {
 	for (;;)
 	{
 
-		if (xSemaphoreTake(Sens1_SEM, pdMS_TO_TICKS(3000)) != pdTRUE) {
+		if (xSemaphoreTake(Sens1_SEM, portMAX_DELAY/*pdMS_TO_TICKS(3000) */ ) != pdTRUE) {
 			printf("Error: Sens1_SEM Receive\n");
 		}
-
 		else {
 			//printf("\-----U AVERAGE SAM------\n");
-			if (xQueueReceive(Queue1, &tmp1Val, pdMS_TO_TICKS(300)) != pdTRUE) {
+			if (xQueueReceive(Queue1, &tmp1Val, portMAX_DELAY/*pdMS_TO_TICKS(300)*/) != pdTRUE) {
 				printf("Error: QUEUE1_RECEIVE\n");
 			}
 			else {
+				//printf("Primim 1: %d--------", tmp1Val);
 				tmp1 += (uint16_t)tmp1Val;
 				cnt1++;
 				//printf("\n--------------------OVDE SAAMM %u\n", tmp1);
 			}
-
+			
 			//printf("-----DOBIO SAM %u: \n", tmp1Val);
 
 			if (cnt1 == 5) {
@@ -486,14 +537,13 @@ static void AveragingDataTask(void* pvParameters) {
 			}
 		}
 
-
-
-		if (xSemaphoreTake(Sens2_SEM, pdMS_TO_TICKS(3000)) != pdTRUE) {
+		
+		if (xSemaphoreTake(Sens2_SEM, portMAX_DELAY/*pdMS_TO_TICKS(3000)*/) != pdTRUE) {
 			printf("Error: Sens2_SEM Receive\n");
 		}
 
 		else {
-			if (xQueueReceive(Queue2, &tmp2Val, pdMS_TO_TICKS(300)) != pdTRUE) {
+			if (xQueueReceive(Queue2, &tmp2Val, portMAX_DELAY/*pdMS_TO_TICKS(300)*/) != pdTRUE) {
 				printf("Error QUEUE2_RECEIVE\n");
 			}
 
@@ -530,8 +580,8 @@ static void AveragingDataTask(void* pvParameters) {
 
 static void ProcessDataTask(void* pvParameters) {
 
-	static double STemp1 = 0;
-	static double STemp2 = 0;
+	double STemp1 = 0;
+	double STemp2 = 0;
 	static double motorTemp = 0;
 	static uint8_t ventilatorFlag = 0;
 
@@ -552,13 +602,14 @@ static void ProcessDataTask(void* pvParameters) {
 			/*if (xSemaphoreGive(WrongSensing_SEM) != pdTRUE) {
 				printf("Error WrongSensing_SEM Give\n");
 			}*/
+
 			printf("--------RAZLIKA U TEMPERATURI PREVELIKA---------\n");
 		}
 
 		motorTemp = (STemp1 + STemp2) / (double)2;
 
 		printf("Temperatura Motora je: %f\n", motorTemp);
-		/*if (xQueueSend(QMotorTemp, &motorTemp, 0) != pdTRUE) {
+		if (xQueueSend(QMotorTemp, &motorTemp, 0) != pdTRUE) {
 			printf("Error: Queue Send QMotorTemp\n");
 		}
 
@@ -584,7 +635,7 @@ static void ProcessDataTask(void* pvParameters) {
 
 		if (motorTemp > 95) {
 			//poruka upozorenja i ukljuciti treci stubac LED bara da blinka periodom od 100ms
-		}*/
+		}
 
 		//na LCD displeju prikazati trenutnu vrednost temperature motora, brzina osvezavanja podatak 100ms
 	}
@@ -592,15 +643,19 @@ static void ProcessDataTask(void* pvParameters) {
 }
 
 static void LedBarTask(void* pvParameters) {
+
 	static uint8_t i = 0;
+	uint8_t d;
 
 	for (;;) {
-		if (xSemaphoreTake(Display_SEM, pdMS_TO_TICKS(200)) != pdTRUE) {
+		/*if (xSemaphoreTake(Display_SEM, pdMS_TO_TICKS(200)) != pdTRUE) {
 			printf("Error: Semaphore Display_SEM Take\n");
-		}
+		}*/
 		//xSemaphoreTake(LED_INT_BinarySemaphore, portMAX_DELAY);
-		printf("Led Bar SAM\n");
-		//get_LED_BAR(0, &d);
+		printf("Led Bar SAM---------");
+		
+		set_LED_BAR(0, 0xff);
+
 		set_LED_BAR(2, 0x00);
 		set_LED_BAR(2, 0x01);
 		set_LED_BAR(2, 0x03);
@@ -611,15 +666,7 @@ static void LedBarTask(void* pvParameters) {
 		set_LED_BAR(2, 0x7f);
 		set_LED_BAR(2, 0xff);
 
-		set_LED_BAR(1, 0x00);
-		set_LED_BAR(1, 0x01);
-		set_LED_BAR(1, 0x03);
-		set_LED_BAR(1, 0x07);
-		set_LED_BAR(1, 0x0f);
-		set_LED_BAR(1, 0x1f);
-		set_LED_BAR(1, 0x3f);
-		set_LED_BAR(1, 0x7f);
-		set_LED_BAR(1, 0xff);
+		vTaskDelay(pdMS_TO_TICKS(5000));
 		/*i = 3;
 		do {
 			i--;
@@ -631,37 +678,65 @@ static void LedBarTask(void* pvParameters) {
 }
 
 static void DisplayTask(void* pvParameters) {
+
+	// 7-SEG NUMBER DATABASE - ALL HEX DIGITS [ 0 1 2 3 4 5 6 7 8 9 A B C D E F ]
+	/*static const char hexnum[] = {0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F, 0x77, 0x7C, 0x39, 0x5E, 0x79, 0x71};*/
+
 	const uint8_t character[] = { 0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F };
-	static double motorTemp = 150;
+	static double motorTemp = 75;
 
 	for (;;) {
-		if (xSemaphoreTake(Display_SEM, pdMS_TO_TICKS(200)) != pdTRUE) {
+		if (xSemaphoreTake(Display_SEM, pdMS_TO_TICKS(10000)) != pdTRUE) {
 			printf("Error: Semaphore Display_SEM Take\n");
 		}
 
-		/*if (xQueueReceive(QMotorTemp, &motorTemp, 0) != pdTRUE) {
+		if (xQueuePeek(QMotorTemp, &motorTemp, 0) != pdTRUE) {	//peek zato sto treba da iscitava 10 puta brze nego sto se upisuje
 			printf("Error: Queue QMotorTemp Receive\n");
-		}*/
+		}
+		
+		printf("------------PRIMIO TEMPERATURU %f---------\n", motorTemp);
 
-		if ((uint8_t)select_7seg_digit((uint8_t)3) != (uint8_t)0) {
+		if ((uint8_t)select_7seg_digit((uint8_t)0) != (uint8_t)0) {		// odabiremo skroz levu cifru
 			printf("Error: Select Display 3\n");
 		}
 		if ((uint8_t)set_7seg_digit(character[(uint8_t)motorTemp / (uint8_t)100]) != (uint8_t)0) {
 			printf("Error: Set Display 3\n");
 		}
-		if ((uint8_t)select_7seg_digit((uint8_t)2) != (uint8_t)0) {
+		if ((uint8_t)select_7seg_digit((uint8_t)1) != (uint8_t)0) {
 			printf("Error: Select Display 2\n");
 		}
-		if ((uint8_t)set_7seg_digit(character[(uint8_t)motorTemp / (uint8_t)10]) != (uint8_t)0) {
+		if ((uint8_t)set_7seg_digit(character[((uint8_t)motorTemp / (uint8_t)10) % (uint8_t)10]) != (uint8_t)0) { //ide jos % 10 zato sto ako je motorTemp 100 onda je 100 /10 = 10 a ne moze da prikaze to, a treba 0 da prikaze, pa onda ide jos % 10 da bi dobio 0
 			printf("Error: Set Display 2\n");
 		}
-		if ((uint8_t)select_7seg_digit((uint8_t)1) != (uint8_t)0) {
+		if ((uint8_t)select_7seg_digit((uint8_t)2) != (uint8_t)0) {
 			printf("Error: Select Display 1\n");
 		}
 		if ((uint8_t)set_7seg_digit(character[(uint8_t)motorTemp % (uint8_t)10]) != (uint8_t)0) {
 			printf("Error: Set Display 1\n");
 		}
 
+		vTaskDelay(pdMS_TO_TICKS(1000));
 
+	}
+}
+
+static void SendMessageTask(void* pvParameters) {
+	
+	static const char message1[] = "Ventilator ukljucen\13";
+	static const char message2[] = "Ventilator iskljucen\13";
+	static const char message3[] = "Temperatura previsoka\13";
+	static const char message4[] = "Senzor 1 neispravan\13";
+	static const char message5[] = "Senzor 2 neispravan\13";
+
+	static uint8_t n = 0;
+
+	for (;;) {
+
+		for (n = 0; n < sizeof(message1); n++) {
+			send_serial_character(2, message1[n]);
+			vTaskDelay(pdMS_TO_TICKS(70));
+		}
+
+		vTaskDelay(pdMS_TO_TICKS(1000));
 	}
 }
